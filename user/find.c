@@ -38,7 +38,7 @@ void find(char *path, char *target) {
 			if(de.inum == 0) continue;//该目录项无效
 			memmove(p, de.name, DIRSIZ);//memcpy 14
 			p[DIRSIZ] = 0;//确保字符串以 null 结尾
-			// Don't recurse into "." and "..".
+			// Don't recurse into "." and ".." ！ ！ ！ ！ ！ 
 			if(strcmp(buf+strlen(buf)-2, "/.") != 0 && strcmp(buf+strlen(buf)-3, "/..") != 0) 
 				find(buf, target); // 递归
 		}
@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
 {
 	if(argc < 3) exit(0);
 	char target[512];//要查找的目标文件
-	target[0] = '/'; // 默认根目录下运行
+	target[0] = '/'; // 后缀匹配，防止前面还有//默认根目录下运行
 	strcpy(target+1, argv[2]);//要查找的目标文件的名称
 	find(argv[1], target);//argv[1]要搜索的起始目录的路径
 	exit(0);

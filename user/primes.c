@@ -8,7 +8,7 @@ void dfs(int L[2]) {
 	read(L[0], &p, sizeof(p)); // 素
 	if(p == -1) exit(0); // flag
 	printf("prime %d\n", p);
-	int R[2]; pipe(R);
+	int R[2]; pipe(R);//新管道
 	if(fork()==0) 
     {// 子进程 
 		close(R[1]); // 操作系统对每个进程有文件描述符数量的限制，如果不关闭不需要的文件描述符
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 		for(i=2;i<=35;i++) write(que[1], &i, sizeof(i));//先进先出
 		i=-1;
 		write(que[1], &i, sizeof(i)); // 末尾输入 -1，用于标识输入完成
-        wait(0);//放外面一样
+        wait(0);//因为if有exit，所以放外面一样
 	    exit(0);
 	}
 }
