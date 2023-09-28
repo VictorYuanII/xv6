@@ -141,6 +141,8 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->syscall_trace = 0; // 实验1 为 syscall_trace 设置一个 0 的默认值
+
   return p;
 }
 
@@ -302,6 +304,8 @@ fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+//fork()新建一个子进程
+   np->syscall_trace = p->syscall_trace; // 实验1 子进程继承父进程的 syscall_trace
 
   pid = np->pid;
 
@@ -653,4 +657,16 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+//实验2
+uint64//struct proc proc[NPROC];是全局变量。  NPROC 是一个常量，表示操作系统支持的最大进程数量。
+count_process(void) 
+{ // added function for counting used process slots (lab2)
+  uint64 cnt = 0;
+  for(struct proc *p = proc; p < &proc[NPROC]; p++)
+   {//不需要锁进程 proc 结构，因为我们只需要读取进程列表，不需要写
+    if(p->state != UNUSED)  cnt++;
+  }
+  return cnt;
 }

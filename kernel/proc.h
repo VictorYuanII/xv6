@@ -105,4 +105,5 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  uint64 syscall_trace;        // 我们新加的一行Mask for syscall tracing (新添加的用于标识追踪哪些 system call 的 mask)
 };
