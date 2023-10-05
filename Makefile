@@ -170,7 +170,7 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 # details:
 # http://www.gnu.org/software/make/manual/html_node/Chained-Rules.html
 .PRECIOUS: %.o
-
+ 
 UPROGS=\
 	$U/_cat\
 	$U/_echo\
