@@ -432,3 +432,38 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+// 此函数借鉴了walkaddr的写法，用来递归地打印页表
+void
+raw_vmprint(pagetable_t pagetable, int Layer)
+{
+  // 遍历页表的每一项
+  for(int i = 0 ; i < 512 ; ++i){
+    pte_t pte = pagetable[i];
+     
+    // 如果当前的pte指向的是更低一级的页表
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){//不能 可读可写可执行 ，说明是子页表
+      // 从PTE中解析出物理地址，并打印指定数量的缩进符
+      // 注意解析物理地址时，不能只是简单地将权限位移除出去，还应该左移12位，让出页内偏移量
+      uint64 phaddr = (pte >> 10) << 12;//这是因为页表项中的物理地址只占用了低 52 位，需要左移以清除权限位和页内偏移。
+      for(int i=Layer ; i != 0 ; --i)
+        printf(".. ");
+      
+      // 打印本级页表信息，向孩子页表递归，注意层数+1
+      printf("..%d: pte %p pa %p\n", i, pte, phaddr);//索引 i、页表项的内容 pte 以及解析得到的物理地址 phaddr。
+      uint64 child = PTE2PA(pte);
+      raw_vmprint((pagetable_t)child, Layer + 1);
+    }
+    
+    // 如果当前PTE指向的是叶级页表
+    // 取出物理地址并打印信息，随后返回
+    else if (pte & PTE_V){//PTE_V：有效位（Valid）
+      uint64 phaddr = (pte >> 10) << 12;
+      printf(".. .. ..%d: pte %p pa %p\n", i, pte, phaddr);
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable)
+{
+  raw_vmprint(pagetable, 0);
+}

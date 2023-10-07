@@ -135,6 +135,32 @@ found:
     return 0;
   }
 
+
+// <照葫芦画瓢，我们也像trapframe一样申请一个空闲物理页用来存储变量>
+  // <那么在进程信息里也得保留一份指向这个页面的指针>，这里记为p->usyscall
+  // 因为内核执行的是直接映射，所以kalloc返回的指针可以直接当作物理地址映射到页表中
+    if((p->usyscall = (struct usyscall *)kalloc()) == 0){//物理页分配
+    freeproc(p);//kalloc分配一个物理页面专门用来存储一些不用进入内核态就可以直接读取的信息。
+    release(&p->lock);//虽是虚拟地址，但由于内核页表的直接映射机制，我们也可以将此地址作为物理地址直接使用
+    return 0;
+  }
+
+    // <将pid信息放入结构体，其实也就是放到了这个物理页面开头处>
+  p->usyscall->pid = p->pid;
+
+    // An empty user page table.
+  // 为当前进程申请一个页表页，并将trapframe和trampoline页面映射进去
+  // 注意trampoline代码作为内核代码的一部分，不用额外分配空间，只需要建立映射关系
+  // <我们后面将要修改这个函数，将加速页面一并映射进去>
+  p->pagetable = proc_pagetable(p);//为进程创建一个页表,我们在这里只是使用建立映射关系,让用户态能访问
+
+    // 如果上述函数执行不成功，则释放当前进程和锁
+  if(p->pagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -153,6 +179,15 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+   // <仿照trapframe内存释放的代码，在出错时将p->usyscall页面释放，并将指针置空> 
+  if(p->usyscall)//将之前通过 kalloc 分配的内存块标记为可用，以便后续可以重新分配给其他需要内存的部分。
+    kfree((void*)p->usyscall);//上面有allocproc
+  p->usyscall = 0;
+    // 释放页表
+  // proc_freepagetable会调用uvmunmap解除trampoline和trapframe的映射关系
+  // 并最终调用uvmfree释放内存和页表
+  // <我们后面要修改此处的函数>
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -187,7 +222,6 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
-
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
@@ -196,6 +230,19 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+    // <仿照上面的格式将加速页面映射到页表中>
+  // 使用mappages将此页映射到页表中
+  // 如果出错要释放映射trampoline和trapframe的映射关系
+  // 并释放pagetable的内存，返回空指针
+  if(mappages(pagetable, USYSCALL, PGSIZE, //将一个页面映射到进程的页表中
+              (uint64)(p->usyscall), PTE_R | PTE_U) < 0){//PTE_U用户权限位
+      uvmunmap(pagetable, TRAMPOLINE, 1, 0);//从一个执行环境（通常是用户态）切换到另一个执行环境（通常是内核态）的平滑过渡
+      uvmunmap(pagetable, TRAPFRAME, 1, 0);//取消映射一个区域的页面
+      uvmfree(pagetable, 0);
+      return 0;
+  }
+  // <添加代码结束>
+
   return pagetable;
 }
 
@@ -203,9 +250,11 @@ proc_pagetable(struct proc *p)
 // physical memory it refers to.
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
-{
+{//释放进程页表
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+    // <释放USYSCALL函数的映射关系>
+  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
 }
 

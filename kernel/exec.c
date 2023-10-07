@@ -116,6 +116,13 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+
+// 为第一个进程打印页表，注意这个页表头也可以放在vmprint中打印
+// 我为了让vmprint函数更加干净，把这个打印语句摘出来了
+if(p->pid == 1){
+    printf("page table %p\n", p->pagetable);
+    vmprint(p->pagetable);
+  }
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
