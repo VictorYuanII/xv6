@@ -132,3 +132,12 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+void backtrace() {
+  uint64 fp = r_fp();
+  while(fp != PGROUNDUP(fp)) { // 如果已经到达栈底 
+    uint64 ra = *(uint64*)(fp - 8); //栈帧中从高到低第一个 8 字节 fp-8 是 return address，也就是当前调用层应该返回到的地址
+    printf("%p\n", ra);
+    fp = *(uint64*)(fp - 16); // 栈帧中从高到低第二个 8 字节 fp-16 是 previous address，指向上一层栈帧的 fp 开始地址
+  }
+}

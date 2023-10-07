@@ -364,3 +364,11 @@ sfence_vma()
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
+
+static inline uint64
+r_fp()//添加获取当前 fp（frame pointer）寄存器
+{//fp 指向当前栈帧的开始地址，sp 指向当前栈帧的结束地址。 
+  uint64 x;//栈从高地址往低地址生长，所以 fp 虽然是帧开始地址，但是地址比 sp 高
+  asm volatile("mv %0, s0" : "=r" (x));
+  return x;
+}

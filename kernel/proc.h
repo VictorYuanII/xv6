@@ -105,4 +105,17 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int alarm_interval;          // Alarm interval (0 for disabled)
+  void(*alarm_handler)();      // Alarm handler
+  int alarm_ticks;             // How many ticks left before next alarm goes off
+  struct trapframe *alarm_trapframe;  // A copy of trapframe right before running alarm_handler
+  int alarm_goingoff;          // Is an alarm currently going off and hasn't not yet returned? (prevent re-entrance of alarm_handler)
+/*alarm_interval：时钟周期，0 为禁用
+alarm_handler：时钟回调处理函数
+alarm_ticks：下一次时钟响起前还剩下的 ticks 数
+alarm_trapframe：时钟中断时刻的 trapframe，用于中断处理完成后恢复原程序的正常执行
+alarm_goingoff：是否已经有一个时钟回调正在执行且还未返回
+（用于防止在 alarm_handler 中途闹钟到期再次调用 alarm_handler，导致 alarm_trapframe 被覆盖）
+*/
 };
