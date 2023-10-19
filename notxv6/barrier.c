@@ -26,11 +26,31 @@ static void
 barrier()
 {
   // YOUR CODE HERE
-  //
+  // 你需要在这里添加你的代码
+
   // Block until all threads have called barrier() and
   // then increment bstate.round.
-  //
-  
+  // 阻塞，直到所有线程都调用了 barrier()，然后增加 bstate.round。
+
+  // 获得 barrier_mutex 锁，用于互斥访问屏障状态
+  pthread_mutex_lock(&bstate.barrier_mutex);
+
+  // 如果还有线程没有达到屏障
+  if (++bstate.nthread < nthread) {
+    // 当前线程进入等待状态，释放 barrier_mutex 互斥锁
+    // 在其他线程唤醒时重新获取锁
+    pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+  } else {
+    // 如果所有线程都已经达到屏障
+
+    bstate.nthread = 0; // 重置 nthread 计数为 0
+    bstate.round++;     // 增加轮次 round
+    // 唤醒所有休眠在 barrier_cond 条件变量上的线程
+    pthread_cond_broadcast(&bstate.barrier_cond);
+  }
+
+  // 释放 barrier_mutex 互斥锁
+  pthread_mutex_unlock(&bstate.barrier_mutex);
 }
 
 static void *
