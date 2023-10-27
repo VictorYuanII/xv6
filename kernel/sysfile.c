@@ -283,6 +283,31 @@ create(char *path, short type, short major, short minor)
   return ip;
 }
 
+
+uint64
+sys_symlink(void)//系统调用，用于创建符号链接文件
+{
+  struct inode *ip;
+  char target[MAXPATH], path[MAXPATH];
+  // 从用户程序获取符号链接的目标路径和链接路径
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+  begin_op(); // 尝试获取文件系统锁，以确保该操作是原子的
+  ip = create(path, T_SYMLINK, 0, 0);  // 在path的位置创建符号链接文件，其inode是ip
+  if(ip == 0){// 失败
+    end_op(); 
+    return -1;
+  }
+  if(writei(ip, 0, (uint64)target, 0, strlen(target)) < 0) {//将target写入ip的头
+    end_op(); 
+    return -1;
+  }
+  // 在 create 函数中，会调用 ilock 来锁定这新创建的 inode
+  iunlockput(ip); // 解锁 inode 并释放对 inode 的引用(引用计数-1)
+  end_op(); 
+  return 0;
+}
+
 uint64
 sys_open(void)
 {
@@ -303,16 +328,37 @@ sys_open(void)
       end_op();
       return -1;
     }
-  } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
+  } else {//递归地跟踪符号链接，以找到最终的目标文件或目录，并进行一些检查，如检查是否存在循环引用以及目标是否是目录
+    int symlink_depth = 0; // 初始化一个变量用于跟踪符号链接的层数
+    while(1) { // 无限循环，用于递归地跟踪符号链接
+      if((ip = namei(path)) == 0){ // 使用 namei 函数查找文件路径对应的 inode，如果找不到，返回0
+        end_op(); 
+        return -1; 
+      }
+      ilock(ip); // 锁住 inode 以确保其他进程不会同时修改它
+      if(ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0)//允许打开符号链接并跟随它，以打开符号链接指向的文件。
+       {
+        if(++symlink_depth > 10) { // 检查符号链接的层数是否超过10，以避免可能的循环
+          // 层数太多，可能是循环引用 (一个符号链接引用了自身或者引用了其他文件，最终形成一个环路。这种情况下，文件系统或程序可能会陷入无限循环)
+          iunlockput(ip); 
+          end_op(); 
+          return -1; 
+        }
+        if(readi(ip, 0, (uint64)path, 0, MAXPATH) < 0) // 读取符号链接的目标路径
+        {//从过程上看是从文件 ip 的开头读取数据，并将这些数据复制到 path 所指向的内存位置中，最多不超过 MAXPATH 字节
+          iunlockput(ip); 
+          end_op(); 
+          return -1; 
+        }
+        iunlockput(ip); // 解锁并释放 inode
+      } else {
+        break; // 如果不是符号链接，退出循环
+      }
     }
-    ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
-      iunlockput(ip);
-      end_op();
-      return -1;
+      iunlockput(ip); // 如果 inode 类型是目录且打开模式不是只读，解锁并释放 inode
+      end_op(); // 结束操作
+      return -1; // 返回错误代码表示失败
     }
   }
 
