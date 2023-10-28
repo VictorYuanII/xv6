@@ -118,11 +118,9 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
-  p->state = USED;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-    freeproc(p);
     release(&p->lock);
     return 0;
   }
@@ -141,6 +139,11 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // Clear VMAs
+  for(int i=0;i<NVMA;i++) {
+    p->vmas[i].valid = 0;
+  }
+
   return p;
 }
 
@@ -153,6 +156,10 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  for(int i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+    vmaunmap(p->pagetable, v->vastart, v->sz, v);
+  }
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -300,6 +307,14 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
+for(i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+    if(v->valid) {
+      np->vmas[i] = *v;// 复制 VMA 结构
+      filedup(v->f); // 增加文件的引用计数
+    }
+  }
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 

@@ -66,11 +66,19 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
-    // ok
-  } else {
+    // ok  哪个设备中断正在处理将存储在 which_dev 变量中
+  } else {//既不是系统调用，也没有设备中断
+    uint64 va = r_stval();//13在尝试访问尚未分配物理内存的虚拟地址时
+    if((r_scause() == 13 || r_scause() == 15)){ // 15 超过可访问物理内存的地址
+      if(!vmatrylazytouch(va)) {//懒分配
+        goto unexpected_scause;
+      }
+    } else {
+    unexpected_scause:
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
+    }
   }
 
   if(p->killed)

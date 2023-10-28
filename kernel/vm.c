@@ -5,6 +5,14 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "fcntl.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "proc.h"
+
+
+
 
 /*
  * the kernel's page table.
@@ -430,5 +438,42 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+// 从虚拟地址 va 开始，移除 n 字节（而不是页面）的 VMA 映射。va 必须是页对齐的。
+// 这些映射不一定存在。
+// 如果需要，还会释放物理内存并将 VMA 数据写回磁盘。
+void
+vmaunmap(pagetable_t pagetable, uint64 va, uint64 nbytes, struct vma *v)
+{
+  uint64 a;
+  pte_t *pte;
+
+  // 借用了“uvmunmap”的代码
+  for(a = va; a < va + nbytes; a += PGSIZE){ //从va开始，按页大小循环解除映射
+    if((pte = walk(pagetable, a, 0)) == 0) //如果找不到页表项，报错
+      panic("sys_munmap: walk");
+    if(PTE_FLAGS(*pte) == PTE_V)//如果页表项不是叶子节点，报错
+      panic("sys_munmap: not a leaf"); 
+    if(*pte & PTE_V){ //如果页表项有效
+      uint64 pa = PTE2PA(*pte); //获取物理地址
+      if((*pte & PTE_D) && (v->flags & MAP_SHARED)) { //如果页表项是脏的，并且VMA是共享的，需要写回到磁盘
+        begin_op(); //开始文件操作
+        ilock(v->f->ip); //锁定文件对应的inode
+        uint64 aoff = a - v->vastart; //计算相对于VMA起始地址的偏移量
+        if(aoff < 0) { //如果第一页不是完整的4k页面，从偏移量开始写入文件
+          writei(v->f->ip, 0, pa + (-aoff), v->offset, PGSIZE + aoff);
+        } else if(aoff + PGSIZE > v->sz){  //如果最后一页不是完整的4k页面，只写入VMA大小的数据到文件
+          writei(v->f->ip, 0, pa, v->offset + aoff, v->sz - aoff);
+        } else { //如果是完整的4k页面，直接写入文件
+          writei(v->f->ip, 0, pa, v->offset + aoff, PGSIZE);
+        }
+        iunlock(v->f->ip); //解锁inode
+        end_op(); //结束文件操作
+      }
+      kfree((void*)pa); //释放物理内存
+      *pte = 0; //清空页表项
+    }
   }
 }
